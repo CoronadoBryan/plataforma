@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'envato' => [
+        'headless' => filter_var(env('ENVATO_HEADLESS', true), FILTER_VALIDATE_BOOL),
+    ],
+
 ];

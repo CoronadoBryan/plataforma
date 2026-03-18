@@ -34,7 +34,7 @@ class ProcessEnvatoDescarga implements ShouldQueue
 
         $scriptPath = base_path('automation/envato-download.mjs');
         $authPath = base_path('automation/.auth/envato.json');
-        $headless = filter_var(env('ENVATO_HEADLESS', true), FILTER_VALIDATE_BOOL);
+        $headless = config('services.envato.headless', true);
 
         if (! file_exists($scriptPath)) {
             $descarga->update([
