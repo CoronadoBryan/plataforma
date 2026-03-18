@@ -11,7 +11,7 @@ const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext();
 const page = await context.newPage();
 
-await page.goto("https://elements.envato.com/sign-in", {
+await page.goto("https://elements.envato.com/es/sign-in", {
     waitUntil: "domcontentloaded",
     timeout: 120000,
 });
