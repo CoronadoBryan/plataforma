@@ -20,6 +20,20 @@ class EnvatoElements extends Page
     public ?string $link = null;
     public ?int $descargaId = null;
 
+    public bool $mostrarCompletado = true;
+
+    public function limpiar(): void
+    {
+        $this->descargaId = null;
+        $this->mostrarCompletado = false;
+        $this->reset('link');
+
+        Notification::make()
+            ->title('Listo para una nueva descarga.')
+            ->success()
+            ->send();
+    }
+
     public function ejecutar(): void
     {
         $this->validate([
@@ -37,6 +51,18 @@ class EnvatoElements extends Page
             return;
         }
 
+        if ($this->descargaEnCurso) {
+            $this->descargaId = $this->descargaEnCurso->id;
+
+            Notification::make()
+                ->title('Ya tienes una descarga en proceso.')
+                ->body('Espera a que termine antes de ejecutar otra.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         $descarga = Descarga::create([
             'user_id' => $userId,
             'archivo' => $this->resolverNombreArchivo($this->link),
@@ -45,6 +71,7 @@ class EnvatoElements extends Page
         ]);
 
         $this->descargaId = $descarga->id;
+        $this->mostrarCompletado = true;
 
         ProcessEnvatoDescarga::dispatch($descarga->id);
 
@@ -80,17 +107,49 @@ class EnvatoElements extends Page
             ->first();
     }
 
+    public function getDescargaEnCursoProperty(): ?Descarga
+    {
+        if (! auth()->check()) {
+            return null;
+        }
+
+        return Descarga::query()
+            ->where('user_id', auth()->id())
+            ->whereIn('estado', ['pendiente', 'procesando'])
+            ->latest('id')
+            ->first();
+    }
+
+    public function getPuedeEjecutarProperty(): bool
+    {
+        return $this->descargaEnCurso === null;
+    }
+
     public function getProgresoProperty(): int
     {
         $estado = $this->descargaActual?->estado;
 
         return match ($estado) {
-            'pendiente' => 25,
-            'procesando' => 65,
+            'pendiente' => 20,
+            'procesando' => 60,
             'completado' => 100,
-            'requiere_verificacion' => 100,
+            'requiere_verificacion' => 90,
             'error' => 100,
             default => 0,
+        };
+    }
+
+    public function getEstadoTextoProperty(): string
+    {
+        $estado = $this->descargaActual?->estado;
+
+        return match ($estado) {
+            'pendiente' => 'En cola',
+            'procesando' => 'Descargando',
+            'completado' => 'Completado',
+            'requiere_verificacion' => 'Requiere verificacion',
+            'error' => 'Error',
+            default => 'Sin actividad',
         };
     }
 }
