@@ -6,6 +6,7 @@ use App\Models\Descarga;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 class ProcessEnvatoDescarga implements ShouldQueue
@@ -32,6 +33,8 @@ class ProcessEnvatoDescarga implements ShouldQueue
         ]);
 
         $scriptPath = base_path('automation/envato-download.mjs');
+        $authPath = base_path('automation/.auth/envato.json');
+        $headless = filter_var(env('ENVATO_HEADLESS', true), FILTER_VALIDATE_BOOL);
 
         if (! file_exists($scriptPath)) {
             $descarga->update([
@@ -43,22 +46,79 @@ class ProcessEnvatoDescarga implements ShouldQueue
             return;
         }
 
-        $process = new Process([
-            'node',
-            $scriptPath,
-            '--url=' . $descarga->url,
-            '--id=' . $descarga->id,
-            '--downloads=' . storage_path('app/downloads'),
-            '--auth=' . base_path('automation/.auth/envato.json'),
-            '--headless=' . (filter_var(env('ENVATO_HEADLESS', true), FILTER_VALIDATE_BOOL) ? 'true' : 'false'),
-        ], base_path(), null, null, 300);
+        $nodeBinary = env('NODE_PATH', 'node');
+        $downloadsPath = storage_path('app/downloads');
+        $headlessArg = $headless ? 'true' : 'false';
 
-        $process->run();
+        // En Windows con headless=false: ejecutar via "start /wait" para que Chromium abra en ventana visible
+        $outputFile = null;
+        if (PHP_OS_FAMILY === 'Windows' && ! $headless) {
+            $batDir = storage_path('app/temp');
+            if (! is_dir($batDir)) {
+                mkdir($batDir, 0755, true);
+            }
+            $batPath = $batDir . DIRECTORY_SEPARATOR . 'envato-' . $descarga->id . '.bat';
+            $outputFile = $batDir . DIRECTORY_SEPARATOR . 'envato-' . $descarga->id . '.out';
+            $urlEscaped = str_replace(['%', '^', '&', '<', '>', '|', '"'], ['%%', '^^', '^&', '^<', '^>', '^|', '""'], $descarga->url);
+            $batContent = "@echo off\r\n";
+            $batContent .= 'cd /d "' . str_replace('"', '""', base_path()) . '"' . "\r\n";
+            $batContent .= '"' . str_replace('"', '""', $nodeBinary) . '" "' . str_replace('"', '""', $scriptPath) . '" ';
+            $batContent .= '--url="' . $urlEscaped . '" --id=' . $descarga->id . ' ';
+            $batContent .= '--downloads="' . str_replace('"', '""', $downloadsPath) . '" ';
+            $batContent .= '--auth="' . str_replace('"', '""', $authPath) . '" --headless=false ';
+            $batContent .= '> "' . str_replace('"', '""', $outputFile) . '" 2>&1' . "\r\n";
+            file_put_contents($batPath, $batContent);
 
-        if (! $process->isSuccessful()) {
+            $process = new Process([
+                'cmd', '/c', 'start', '"Envato Download"', '/wait', $batPath,
+            ], base_path(), null, null, 300);
+
+            Log::info('ProcessEnvatoDescarga: Windows con ventana', [
+                'descarga_id' => $descarga->id,
+                'bat' => $batPath,
+            ]);
+        } else {
+            $args = [
+                $nodeBinary,
+                $scriptPath,
+                '--url=' . $descarga->url,
+                '--id=' . $descarga->id,
+                '--downloads=' . $downloadsPath,
+                '--auth=' . $authPath,
+                '--headless=' . $headlessArg,
+            ];
+            $process = new Process($args, base_path(), null, null, 300);
+
+            Log::info('ProcessEnvatoDescarga: iniciando', [
+                'descarga_id' => $descarga->id,
+                'headless' => $headless,
+            ]);
+        }
+
+        try {
+            $process->run();
+        } catch (ProcessTimedOutException $e) {
             $descarga->update([
                 'estado' => 'error',
-                'error_detalle' => trim($process->getErrorOutput() ?: $process->getOutput()),
+                'error_detalle' => 'El proceso agotó el tiempo de espera (5 min). Chromium puede bloquearse cuando el job corre desde la cola. Prueba ENVATO_HEADLESS=true.',
+                'procesado_en' => now(),
+            ]);
+            Log::warning('ProcessEnvatoDescarga: timeout', ['descarga_id' => $descarga->id]);
+
+            return;
+        }
+
+        if (! $process->isSuccessful()) {
+            $errorDetail = trim($process->getErrorOutput() ?: $process->getOutput());
+            if ($outputFile && file_exists($outputFile)) {
+                $fileContent = trim(file_get_contents($outputFile));
+                if ($fileContent !== '') {
+                    $errorDetail = $fileContent;
+                }
+            }
+            $descarga->update([
+                'estado' => 'error',
+                'error_detalle' => $errorDetail,
                 'procesado_en' => now(),
             ]);
 
@@ -68,10 +128,31 @@ class ProcessEnvatoDescarga implements ShouldQueue
                 'error' => $process->getErrorOutput(),
             ]);
 
+            if ($outputFile && file_exists($outputFile)) {
+                @unlink($outputFile);
+            }
+            if (isset($batPath) && file_exists($batPath ?? '')) {
+                @unlink($batPath);
+            }
+
             return;
         }
 
-        $result = json_decode($process->getOutput(), true);
+        $processOutput = $outputFile && file_exists($outputFile)
+            ? trim(file_get_contents($outputFile))
+            : $process->getOutput();
+
+        if ($outputFile && file_exists($outputFile)) {
+            @unlink($outputFile);
+        }
+        if ($outputFile) {
+            $batPath = dirname($outputFile) . DIRECTORY_SEPARATOR . 'envato-' . $descarga->id . '.bat';
+            if (file_exists($batPath)) {
+                @unlink($batPath);
+            }
+        }
+
+        $result = json_decode($processOutput, true);
 
         if (is_array($result) && ($result['requiresVerification'] ?? false)) {
             $descarga->update([
