@@ -2,12 +2,30 @@
 
 use App\Models\Descarga;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/descargas/{descarga}/archivo', function (Descarga $descarga) {
+Route::get('/descargas/{descarga}/archivo', function (Request $request, Descarga $descarga) {
+    Log::warning('descargas.archivo hit', [
+        'descarga_id' => $descarga->id,
+        'request_url' => $request->fullUrl(),
+        'scheme' => $request->getScheme(),
+        'is_secure' => $request->isSecure(),
+        'x_forwarded_proto' => $request->header('x-forwarded-proto'),
+        'auth_id' => auth()->id(),
+        'archivo_local' => $descarga->archivo_local,
+        'archivo_local_exists' => $descarga->archivo_local ? file_exists($descarga->archivo_local) : false,
+    ]);
+
+    // Si por alguna razón el request entra por http, forzamos https para evitar mixed-content.
+    if (! $request->isSecure()) {
+        return redirect()->secure($request->getRequestUri(), 302);
+    }
+
     if ($descarga->user_id !== auth()->id()) {
         abort(403);
     }
