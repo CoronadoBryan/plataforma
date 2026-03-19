@@ -7,7 +7,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::middleware('auth')->get('/descargas/{descarga}/archivo', function (Descarga $descarga) {
+Route::get('/descargas/{descarga}/archivo', function (Descarga $descarga) {
     if ($descarga->user_id !== auth()->id()) {
         abort(403);
     }
