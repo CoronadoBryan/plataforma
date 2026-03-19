@@ -42,5 +42,26 @@ Route::get('/descargas/{descarga}/archivo', function (Request $request, Descarga
         abort(404);
     }
 
-    return response()->download($descarga->archivo_local, basename($descarga->archivo_local));
+    $fileSize = null;
+    try {
+        $fileSize = file_exists($descarga->archivo_local) ? filesize($descarga->archivo_local) : null;
+    } catch (\Throwable $e) {}
+
+    Log::warning('descargas.archivo preparando download', [
+        'descarga_id' => $descarga->id,
+        'file_size' => $fileSize,
+        'is_readable' => $descarga->archivo_local ? is_readable($descarga->archivo_local) : null,
+        'archivo_local' => $descarga->archivo_local,
+    ]);
+
+    try {
+        return response()->download($descarga->archivo_local, basename($descarga->archivo_local));
+    } catch (\Throwable $e) {
+        Log::error('descargas.archivo error en response()->download', [
+            'descarga_id' => $descarga->id,
+            'error' => $e->getMessage(),
+        ]);
+
+        abort(500);
+    }
 })->name('descargas.archivo');
