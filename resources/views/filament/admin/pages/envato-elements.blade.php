@@ -52,7 +52,7 @@
             <div class="mt-10 flex flex-wrap gap-3">
                 <x-filament::button
                     tag="a"
-                    :href="url()->secure(route('descargas.archivo', $this->descargaActual))"
+                    :href="'/descargas/' . $this->descargaActual->id . '/archivo'"
                     color="success"
                     icon="heroicon-o-arrow-down-tray"
                     size="lg"
