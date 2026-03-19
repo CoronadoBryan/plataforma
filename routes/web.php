@@ -21,8 +21,17 @@ Route::get('/descargas/{descarga}/archivo', function (Request $request, Descarga
         'archivo_local_exists' => $descarga->archivo_local ? file_exists($descarga->archivo_local) : false,
     ]);
 
-    // Si por alguna razón el request entra por http, forzamos https para evitar mixed-content.
-    if (! $request->isSecure()) {
+    // Importante: detrás de proxy/Cloudflare, Laravel a veces ve http pero el header indica https.
+    // Usamos el "forwarded proto" como fuente de verdad para evitar redirecciones en bucle.
+    $forwardedProto = strtolower((string) $request->header('x-forwarded-proto', ''));
+    $effectiveSecure = $request->isSecure() || $forwardedProto === 'https' || $forwardedProto === 'wss';
+
+    if (! $effectiveSecure) {
+        Log::warning('descargas.archivo redirect seguro', [
+            'forwardedProto' => $forwardedProto,
+            'request_scheme' => $request->getScheme(),
+        ]);
+
         return redirect()->secure($request->getRequestUri(), 302);
     }
 
