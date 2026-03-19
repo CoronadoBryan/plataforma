@@ -910,36 +910,24 @@
     <div class="steps-grid reveal">
       <div class="step-card">
         <div class="step-num">01</div>
-        <div class="step-icon">💳</div>
+        <div class="step-icon">Pago</div>
         <div class="step-title">Compra tu acceso</div>
         <div class="step-desc">Elige tu plan (1 mes, 6 meses o 1 año). Incluye 1 día gratis para probar y recibes acceso inmediato a nuestra plataforma.</div>
       </div>
       <div class="step-card">
         <div class="step-num">02</div>
-        <div class="step-icon">🔗</div>
+        <div class="step-icon">Enlace</div>
         <div class="step-title">Pega el enlace</div>
         <div class="step-desc">Copia la URL del recurso en Envato Elements y pégala en nuestra plataforma.</div>
       </div>
       <div class="step-card">
         <div class="step-num">03</div>
-        <div class="step-icon">⬇️</div>
+        <div class="step-icon">Descarga</div>
         <div class="step-title">Descarga al instante</div>
         <div class="step-desc">El archivo aparece listo para descargar en segundos, directo a tu dispositivo.</div>
       </div>
     </div>
 
-    <!-- DEMO INPUT -->
-    <div class="input-wrapper reveal" style="margin-top:3rem;">
-      <span class="input-label">Prueba cómo funciona</span>
-      <div class="input-row">
-        <input type="text" class="url-input" placeholder="https://elements.envato.com/tu-recurso-aqui" id="demoInput">
-        <button class="download-btn" onclick="demoDownload()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Descargar
-        </button>
-      </div>
-      <div class="input-hint" id="inputHint">↑ Pega un enlace de Envato Elements para ver la magia</div>
-    </div>
   </div>
 </section>
 
@@ -957,7 +945,7 @@
       <div class="pricing-card reveal" style="margin:0; max-width:360px;">
         <div class="pricing-glow"></div>
         <div class="pricing-header">
-          <div class="popular-tag">✦ 1 mes</div>
+          <div class="popular-tag">Plan 1 mes</div>
           <div class="price-amount" style="flex-direction: column; gap: 0.55rem; margin-top: 0.25rem;">
             <div style="font-size:1.2rem; font-weight:800; color: var(--text);">S/20</div>
             <div style="font-size:0.92rem; font-weight:600; color: var(--text2);">Incluye 1 día gratis</div>
@@ -989,7 +977,7 @@
       <div class="pricing-card reveal" style="margin:0; max-width:360px;">
         <div class="pricing-glow"></div>
         <div class="pricing-header">
-          <div class="popular-tag">✦ 6 meses</div>
+          <div class="popular-tag">Plan 6 meses</div>
           <div class="price-amount" style="flex-direction: column; gap: 0.55rem; margin-top: 0.25rem;">
             <div style="font-size:1.2rem; font-weight:800; color: var(--text);">S/100</div>
             <div style="font-size:0.92rem; font-weight:600; color: var(--text2);">Incluye 1 día gratis</div>
@@ -1021,7 +1009,7 @@
       <div class="pricing-card reveal" style="margin:0; max-width:360px;">
         <div class="pricing-glow"></div>
         <div class="pricing-header">
-          <div class="popular-tag">✦ 1 año</div>
+          <div class="popular-tag">Plan 1 año</div>
           <div class="price-amount" style="flex-direction: column; gap: 0.55rem; margin-top: 0.25rem;">
             <div style="font-size:1.2rem; font-weight:800; color: var(--text);">S/180</div>
             <div style="font-size:0.92rem; font-weight:600; color: var(--text2);">Incluye 1 día gratis</div>
@@ -1190,23 +1178,6 @@ function toggleFaq(btn) {
     answer.classList.add('open');
     btn.classList.add('active');
   }
-}
-
-function demoDownload() {
-  const input = document.getElementById('demoInput');
-  const hint = document.getElementById('inputHint');
-  const val = input.value.trim();
-  if (!val || !val.includes('envato')) {
-    hint.textContent = '⚠ Pega un enlace válido de elements.envato.com';
-    hint.style.color = '#f5a842';
-    return;
-  }
-  hint.textContent = '⏳ Procesando enlace...';
-  hint.style.color = '#a87fff';
-  setTimeout(() => {
-    hint.innerHTML = '✓ ¡Archivo listo! <strong style="color:#22d3a0">Obtén tu acceso para descargar →</strong>';
-    hint.style.color = '#22d3a0';
-  }, 1800);
 }
 
 const observer = new IntersectionObserver((entries) => {
