@@ -48,10 +48,8 @@ const page = await context.newPage();
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForTimeout(3000);
 
-const xpathDownloadVerde =
-    '//*[@id="content"]/div[1]/div[2]/div[1]/div[1]/div/div/div/div/div/div/div/div[2]/div/div/div[1]/div[2]/div/div/button[1]';
-const xpathTerminos = "/html/body/div[8]/div/div/div/div[2]/div/div[3]/div/div[1]/div/div/div/label/div/div/div";
-const xpathDownloadFinal = "/html/body/div[8]/div/div/div/footer/div[1]/div/div/div/button";
+const xpathDownloadDirecto =
+    "/html/body/div[1]/div/div/div/div/div/div[2]/div[2]/div[2]/div/div/div/div[2]/div[2]/div/div[2]/div/div/button";
 
 async function isCloudflareChallenge() {
     const title = (await page.title()).toLowerCase();
@@ -72,15 +70,13 @@ async function clickXpath(xpath, timeout = 20000) {
     await locator.click({ timeout });
 }
 
-async function intentarFlujoXpaths() {
+async function intentarFlujoDescargaDirecta() {
     try {
-        await clickXpath(xpathDownloadVerde);
-        await page.waitForTimeout(1200);
-        await clickXpath(xpathTerminos);
-        await page.waitForTimeout(1200);
+        // Envato redirige desde elements.envato.com a app.envato.com.
+        await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
         const [download] = await Promise.all([
             page.waitForEvent("download", { timeout: 30000 }),
-            clickXpath(xpathDownloadFinal, 25000),
+            clickXpath(xpathDownloadDirecto, 25000),
         ]);
         return download;
     } catch {
@@ -117,7 +113,7 @@ async function intentarFlujoSelectors() {
     return null;
 }
 
-let download = await intentarFlujoXpaths();
+let download = await intentarFlujoDescargaDirecta();
 
 if (!download) {
     download = await intentarFlujoSelectors();

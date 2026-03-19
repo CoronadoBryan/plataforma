@@ -70,7 +70,7 @@ class ProcessEnvatoDescarga implements ShouldQueue
             file_put_contents($batPath, $batContent);
 
             $process = new Process([
-                'cmd', '/c', 'start', '"Envato Download"', '/wait', $batPath,
+                'cmd', '/c', $batPath,
             ], base_path(), null, null, 300);
 
             Log::info('ProcessEnvatoDescarga: Windows con ventana', [
