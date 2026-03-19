@@ -55,7 +55,17 @@ Route::get('/descargas/{descarga}/archivo', function (Request $request, Descarga
     ]);
 
     try {
-        return response()->download($descarga->archivo_local, basename($descarga->archivo_local));
+        $response = response()->download($descarga->archivo_local, basename($descarga->archivo_local));
+
+        Log::warning('descargas.archivo response preparado', [
+            'descarga_id' => $descarga->id,
+            'status' => $response->getStatusCode(),
+            'location_header' => $response->headers->get('Location'),
+            'content_disposition' => $response->headers->get('Content-Disposition'),
+            'content_type' => $response->headers->get('Content-Type'),
+        ]);
+
+        return $response;
     } catch (\Throwable $e) {
         Log::error('descargas.archivo error en response()->download', [
             'descarga_id' => $descarga->id,
