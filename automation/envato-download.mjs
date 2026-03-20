@@ -39,6 +39,7 @@ const authPath = readArg("auth", path.resolve("automation/.auth/envato.json"));
 const headlessArg = readArg("headless", "true");
 const headless = !["false", "0", "no"].includes(String(headlessArg).toLowerCase());
 const scanEnabled = !["false", "0", "no"].includes(String(readArg("scan", "false")).toLowerCase());
+const keepOpenOnFail = !["false", "0", "no"].includes(String(readArg("keepOpenOnFail", "false")).toLowerCase());
 const scanLimit = Math.max(10, parseInt(String(readArg("scanLimit", "50")), 10) || 50);
 const htmlLimit = Math.max(200000, parseInt(String(readArg("htmlLimit", "1200000")), 10) || 1200000);
 
@@ -54,7 +55,7 @@ fs.mkdirSync(downloadsDir, { recursive: true });
 
 const debugDir = path.resolve("storage/app/envato-debug");
 fs.mkdirSync(debugDir, { recursive: true });
-debug("init", { id, url, headless, scanEnabled, authPath, downloadsDir });
+debug("init", { id, url, headless, scanEnabled, keepOpenOnFail, authPath, downloadsDir });
 
 const browser = await chromium.launch({ headless });
 const context = await browser.newContext({
@@ -105,6 +106,15 @@ async function clickXpath(xpath, timeout = 20000) {
     await locator.waitFor({ state: "visible", timeout });
     debug("clickXpath.click", { xpath });
     await locator.click({ timeout });
+}
+
+async function clickLocatorAndWaitDownload(locator, label) {
+    const [download] = await Promise.all([
+        page.waitForEvent("download", { timeout: 30000 }),
+        locator.click({ timeout: 12000 }),
+    ]);
+    debug("download.event", { via: label, suggestedFilename: download?.suggestedFilename?.() ?? null });
+    return download;
 }
 
 function uniq(arr) {
@@ -267,6 +277,32 @@ async function intentarFlujoDescargaDirecta() {
             debug("flujo.directo.candidates", { note: "scan desactivado o sin resultado" });
         }
 
+        // 1) Intento robusto por texto/rol (menos frágil que XPath absoluto).
+        const textAttempts = [
+            { label: 'button:has-text("Descargar 4K")', locator: page.locator('button:has-text("Descargar 4K")').first() },
+            { label: 'button:has-text("Descargar 4k")', locator: page.locator('button:has-text("Descargar 4k")').first() },
+            { label: 'button:has-text("Descargar")', locator: page.locator('button:has-text("Descargar")').first() },
+            { label: 'role button /descargar 4k/i', locator: page.getByRole("button", { name: /descargar 4k/i }).first() },
+            { label: 'role button /descargar/i', locator: page.getByRole("button", { name: /descargar/i }).first() },
+        ];
+
+        for (const attempt of textAttempts) {
+            try {
+                const count = await attempt.locator.count();
+                if (count === 0) continue;
+                await attempt.locator.scrollIntoViewIfNeeded({ timeout: 5000 });
+                await attempt.locator.waitFor({ state: "visible", timeout: 10000 });
+                debug("flujo.directo.tryText", { label: attempt.label });
+                return await clickLocatorAndWaitDownload(attempt.locator, attempt.label);
+            } catch (error) {
+                debug("flujo.directo.tryText.error", {
+                    label: attempt.label,
+                    message: error?.message ?? String(error),
+                });
+            }
+        }
+
+        // 2) Fallback al XPath detectado.
         const [download] = await Promise.all([
             page.waitForEvent("download", { timeout: 30000 }),
             clickXpath(clickTargetXpath, 25000),
@@ -339,7 +375,11 @@ if (!download) {
         });
     }
 
-    await browser.close();
+    if (!keepOpenOnFail) {
+        await browser.close();
+    } else {
+        debug("download.fail.keepOpen", { reason: "keepOpenOnFail=true" });
+    }
     finish({
         ok: false,
         message: `No se pudo iniciar la descarga. Captura: ${screenshotPath}`,
