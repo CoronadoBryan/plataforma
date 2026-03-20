@@ -24,7 +24,7 @@ const downloadsDir = readArg("downloads", path.resolve("storage/app/downloads"))
 const authPath = readArg("auth", path.resolve("automation/.auth/envato.json"));
 const headlessArg = readArg("headless", "true");
 const headless = !["false", "0", "no"].includes(String(headlessArg).toLowerCase());
-const scanEnabled = !["false", "0", "no"].includes(String(readArg("scan", "true")).toLowerCase());
+const scanEnabled = !["false", "0", "no"].includes(String(readArg("scan", "false")).toLowerCase());
 const scanLimit = Math.max(10, parseInt(String(readArg("scanLimit", "50")), 10) || 50);
 const htmlLimit = Math.max(200000, parseInt(String(readArg("htmlLimit", "1200000")), 10) || 1200000);
 
@@ -184,6 +184,7 @@ async function scanButtonsAndXPaths() {
     }
 
     fs.writeFileSync(txtPath, lines.join("\n"), "utf8");
+    return scan.candidates;
 }
 
 async function intentarFlujoDescargaDirecta() {
@@ -192,10 +193,32 @@ async function intentarFlujoDescargaDirecta() {
         await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
 
         // Scan para guardar la estructura real (botones + xpaths + redirecciones).
-        await scanButtonsAndXPaths();
+        const scannedCandidates = await scanButtonsAndXPaths();
+
+        // Elegimos el XPath correcto según el texto detectado.
+        // Esto permite diferenciar flujos "video" (ej: "Descargar 4K") vs "no video".
+        let clickTargetXpath = xpathDownloadDirecto;
+        if (Array.isArray(scannedCandidates) && scannedCandidates.length > 0) {
+            const normalized = scannedCandidates
+                .filter((c) => c && typeof c.text === "string" && c.xpath)
+                .map((c) => ({ text: c.text.toLowerCase(), xpath: c.xpath }));
+
+            const videoCandidate = normalized.find((c) => c.text.includes("4k"));
+            if (videoCandidate?.xpath) {
+                clickTargetXpath = videoCandidate.xpath;
+            } else {
+                const downloadCandidate = normalized.find(
+                    (c) => c.text.includes("descargar") || c.text.includes("download")
+                );
+                if (downloadCandidate?.xpath) {
+                    clickTargetXpath = downloadCandidate.xpath;
+                }
+            }
+        }
+
         const [download] = await Promise.all([
             page.waitForEvent("download", { timeout: 30000 }),
-            clickXpath(xpathDownloadDirecto, 25000),
+            clickXpath(clickTargetXpath, 25000),
         ]);
         return download;
     } catch {
