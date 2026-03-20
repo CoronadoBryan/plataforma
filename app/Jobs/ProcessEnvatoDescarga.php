@@ -126,12 +126,36 @@ class ProcessEnvatoDescarga implements ShouldQueue
 
         if (! $process->isSuccessful()) {
             $errorDetail = trim($process->getErrorOutput() ?: $process->getOutput());
+            $outputContent = null;
             if ($outputFile && file_exists($outputFile)) {
-                $fileContent = trim(file_get_contents($outputFile));
-                if ($fileContent !== '') {
-                    $errorDetail = $fileContent;
+                $outputContent = trim(file_get_contents($outputFile));
+                if ($outputContent !== '') {
+                    $errorDetail = $outputContent;
                 }
             }
+
+            // Fallback importante: en Windows a veces cmd/bat devuelve exit code != 0
+            // aunque el script Node sí terminó y dejó {"ok":true,...} en el .out.
+            // Si detectamos ese JSON válido, marcamos completado y evitamos falso "error".
+            $resultFromFailedProcess = $this->decodeResultWithLogs($outputContent ?? $errorDetail);
+            if (is_array($resultFromFailedProcess) && ($resultFromFailedProcess['ok'] ?? false)) {
+                Log::warning('ProcessEnvatoDescarga: recuperado desde salida con exit code no exitoso', [
+                    'descarga_id' => $descarga->id,
+                    'exit_code' => $process->getExitCode(),
+                    'output_file' => $outputFile,
+                ]);
+
+                $descarga->update([
+                    'estado' => 'completado',
+                    'archivo' => $resultFromFailedProcess['filename'] ?? $descarga->archivo,
+                    'archivo_local' => $resultFromFailedProcess['filePath'] ?? null,
+                    'error_detalle' => null,
+                    'procesado_en' => now(),
+                ]);
+
+                return;
+            }
+
             $descarga->update([
                 'estado' => 'error',
                 'error_detalle' => $errorDetail,
