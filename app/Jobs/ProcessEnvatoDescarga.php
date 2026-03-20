@@ -49,6 +49,7 @@ class ProcessEnvatoDescarga implements ShouldQueue
         $nodeBinary = env('NODE_PATH', 'node');
         $downloadsPath = storage_path('app/downloads');
         $headlessArg = $headless ? 'true' : 'false';
+        $keepTempFiles = filter_var(env('ENVATO_KEEP_TEMP', true), FILTER_VALIDATE_BOOL);
 
         // En Windows con headless=false: ejecutar via "start /wait" para que Chromium abra en ventana visible
         $outputFile = null;
@@ -76,6 +77,8 @@ class ProcessEnvatoDescarga implements ShouldQueue
             Log::info('ProcessEnvatoDescarga: Windows con ventana', [
                 'descarga_id' => $descarga->id,
                 'bat' => $batPath,
+                'out' => $outputFile,
+                'keep_temp_files' => $keepTempFiles,
             ]);
         } else {
             $args = [
@@ -139,13 +142,35 @@ class ProcessEnvatoDescarga implements ShouldQueue
                 'descarga_id' => $descarga->id,
                 'output' => $process->getOutput(),
                 'error' => $process->getErrorOutput(),
+                'output_file' => $outputFile,
+                'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
+                'bat_file' => $batPath ?? null,
+                'bat_file_exists' => isset($batPath) ? file_exists($batPath) : false,
             ]);
 
-            if ($outputFile && file_exists($outputFile)) {
-                @unlink($outputFile);
-            }
-            if (isset($batPath) && file_exists($batPath ?? '')) {
-                @unlink($batPath);
+            if (! $keepTempFiles) {
+                if ($outputFile && file_exists($outputFile)) {
+                    Log::info('ProcessEnvatoDescarga: eliminando outputFile (error)', [
+                        'descarga_id' => $descarga->id,
+                        'output_file' => $outputFile,
+                    ]);
+                    @unlink($outputFile);
+                }
+                if (isset($batPath) && file_exists($batPath ?? '')) {
+                    Log::info('ProcessEnvatoDescarga: eliminando batPath (error)', [
+                        'descarga_id' => $descarga->id,
+                        'bat_file' => $batPath,
+                    ]);
+                    @unlink($batPath);
+                }
+            } else {
+                Log::info('ProcessEnvatoDescarga: conservando archivos temporales (error)', [
+                    'descarga_id' => $descarga->id,
+                    'output_file' => $outputFile,
+                    'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
+                    'bat_file' => $batPath ?? null,
+                    'bat_file_exists' => isset($batPath) ? file_exists($batPath) : false,
+                ]);
             }
 
             return;
@@ -158,17 +183,34 @@ class ProcessEnvatoDescarga implements ShouldQueue
         Log::info('ProcessEnvatoDescarga: salida recolectada', [
             'descarga_id' => $descarga->id,
             'output_file' => $outputFile,
+            'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
             'output_preview' => mb_substr($processOutput ?? '', 0, 2000),
         ]);
 
-        if ($outputFile && file_exists($outputFile)) {
-            @unlink($outputFile);
-        }
-        if ($outputFile) {
-            $batPath = dirname($outputFile) . DIRECTORY_SEPARATOR . 'envato-' . $descarga->id . '.bat';
-            if (file_exists($batPath)) {
-                @unlink($batPath);
+        if (! $keepTempFiles) {
+            if ($outputFile && file_exists($outputFile)) {
+                Log::info('ProcessEnvatoDescarga: eliminando outputFile (success)', [
+                    'descarga_id' => $descarga->id,
+                    'output_file' => $outputFile,
+                ]);
+                @unlink($outputFile);
             }
+            if ($outputFile) {
+                $batPath = dirname($outputFile) . DIRECTORY_SEPARATOR . 'envato-' . $descarga->id . '.bat';
+                if (file_exists($batPath)) {
+                    Log::info('ProcessEnvatoDescarga: eliminando batPath (success)', [
+                        'descarga_id' => $descarga->id,
+                        'bat_file' => $batPath,
+                    ]);
+                    @unlink($batPath);
+                }
+            }
+        } else {
+            Log::info('ProcessEnvatoDescarga: conservando archivos temporales (success)', [
+                'descarga_id' => $descarga->id,
+                'output_file' => $outputFile,
+                'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
+            ]);
         }
 
         $result = $this->decodeResultWithLogs($processOutput);
