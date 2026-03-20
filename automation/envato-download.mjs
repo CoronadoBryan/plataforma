@@ -13,6 +13,20 @@ function fail(message) {
     process.exit(1);
 }
 
+function debug(step, payload = null) {
+    const stamp = new Date().toISOString();
+    if (payload === null || payload === undefined) {
+        process.stderr.write(`[envato-debug ${stamp}] ${step}\n`);
+        return;
+    }
+
+    try {
+        process.stderr.write(`[envato-debug ${stamp}] ${step} ${JSON.stringify(payload)}\n`);
+    } catch {
+        process.stderr.write(`[envato-debug ${stamp}] ${step}\n`);
+    }
+}
+
 function finish(result) {
     process.stdout.write(JSON.stringify(result));
     process.exit(0);
@@ -40,6 +54,7 @@ fs.mkdirSync(downloadsDir, { recursive: true });
 
 const debugDir = path.resolve("storage/app/envato-debug");
 fs.mkdirSync(debugDir, { recursive: true });
+debug("init", { id, url, headless, scanEnabled, authPath, downloadsDir });
 
 const browser = await chromium.launch({ headless });
 const context = await browser.newContext({
@@ -53,10 +68,20 @@ const navUrls = [];
 page.on("framenavigated", (frame) => {
     if (frame === page.mainFrame()) {
         navUrls.push(frame.url());
+        debug("nav.mainFrame", { url: frame.url() });
     }
+});
+page.on("console", (msg) => {
+    if (msg.type() === "error") {
+        debug("page.console.error", { text: msg.text() });
+    }
+});
+page.on("pageerror", (err) => {
+    debug("page.error", { message: err?.message ?? String(err) });
 });
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForTimeout(3000);
+debug("page.loaded", { currentUrl: page.url() });
 
 const xpathDownloadDirecto =
     "/html/body/div[1]/div/div/div/div/div/div[2]/div[2]/div[2]/div/div/div/div[2]/div[2]/div/div[2]/div/div/button";
@@ -76,7 +101,9 @@ async function isCloudflareChallenge() {
 
 async function clickXpath(xpath, timeout = 20000) {
     const locator = page.locator(`xpath=${xpath}`).first();
+    debug("clickXpath.wait", { xpath, timeout });
     await locator.waitFor({ state: "visible", timeout });
+    debug("clickXpath.click", { xpath });
     await locator.click({ timeout });
 }
 
@@ -189,8 +216,10 @@ async function scanButtonsAndXPaths() {
 
 async function intentarFlujoDescargaDirecta() {
     try {
+        debug("flujo.directo.inicio");
         // Envato redirige desde elements.envato.com a app.envato.com.
         await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
+        debug("flujo.directo.urlOk", { currentUrl: page.url() });
 
         // Scan para guardar la estructura real (botones + xpaths + redirecciones).
         const scannedCandidates = await scanButtonsAndXPaths();
@@ -215,13 +244,31 @@ async function intentarFlujoDescargaDirecta() {
                 }
             }
         }
+        debug("flujo.directo.clickTarget", { clickTargetXpath });
+        if (Array.isArray(scannedCandidates)) {
+            debug("flujo.directo.candidates", {
+                count: scannedCandidates.length,
+                preview: scannedCandidates.slice(0, 5).map((c) => ({
+                    text: c.text,
+                    xpath: c.xpath,
+                })),
+            });
+        } else {
+            debug("flujo.directo.candidates", { note: "scan desactivado o sin resultado" });
+        }
 
         const [download] = await Promise.all([
             page.waitForEvent("download", { timeout: 30000 }),
             clickXpath(clickTargetXpath, 25000),
         ]);
+        debug("flujo.directo.downloadEvent", { suggestedFilename: download?.suggestedFilename?.() ?? null });
         return download;
-    } catch {
+    } catch (error) {
+        debug("flujo.directo.error", {
+            message: error?.message ?? String(error),
+            stack: error?.stack ?? null,
+            currentUrl: page.url(),
+        });
         return null;
     }
 }
@@ -242,12 +289,18 @@ async function intentarFlujoSelectors() {
         }
 
         try {
+            debug("flujo.selector.try", { selector });
             const [download] = await Promise.all([
                 page.waitForEvent("download", { timeout: 25000 }),
                 loc.click({ timeout: 10000 }),
             ]);
+            debug("flujo.selector.downloadEvent", { selector, suggestedFilename: download?.suggestedFilename?.() ?? null });
             return download;
-        } catch {
+        } catch (error) {
+            debug("flujo.selector.error", {
+                selector,
+                message: error?.message ?? String(error),
+            });
             // Try next selector
         }
     }
@@ -264,6 +317,7 @@ if (!download) {
 if (!download) {
     const screenshotPath = path.join(debugDir, `descarga-${id}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
+    debug("download.fail.screenshot", { screenshotPath, currentUrl: page.url() });
 
     if (await isCloudflareChallenge()) {
         await browser.close();
@@ -285,7 +339,9 @@ if (!download) {
 
 const suggested = download.suggestedFilename() || `envato-${id}.zip`;
 const filePath = path.join(downloadsDir, `${id}-${suggested}`);
+debug("download.saveAs.start", { suggested, filePath });
 await download.saveAs(filePath);
+debug("download.saveAs.done", { exists: fs.existsSync(filePath) });
 
 await browser.close();
 

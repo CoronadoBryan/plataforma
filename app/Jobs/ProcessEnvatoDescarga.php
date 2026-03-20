@@ -152,7 +152,7 @@ class ProcessEnvatoDescarga implements ShouldQueue
             }
         }
 
-        $result = json_decode($processOutput, true);
+        $result = $this->decodeResultWithLogs($processOutput);
 
         if (is_array($result) && ($result['requiresVerification'] ?? false)) {
             $descarga->update([
@@ -181,6 +181,11 @@ class ProcessEnvatoDescarga implements ShouldQueue
                 'procesado_en' => now(),
             ]);
 
+            Log::warning('ProcessEnvatoDescarga: salida sin JSON valido', [
+                'descarga_id' => $descarga->id,
+                'output_preview' => mb_substr($processOutput ?? '', 0, 4000),
+            ]);
+
             return;
         }
 
@@ -190,5 +195,36 @@ class ProcessEnvatoDescarga implements ShouldQueue
             'archivo_local' => $result['filePath'] ?? null,
             'procesado_en' => now(),
         ]);
+    }
+
+    private function decodeResultWithLogs(string $rawOutput): ?array
+    {
+        $rawOutput = trim($rawOutput);
+
+        if ($rawOutput === '') {
+            return null;
+        }
+
+        // Caso simple: salida pura JSON.
+        $direct = json_decode($rawOutput, true);
+        if (is_array($direct)) {
+            return $direct;
+        }
+
+        // Caso con logs mezclados: buscar el ultimo JSON valido por linea.
+        $lines = preg_split("/\r\n|\n|\r/", $rawOutput) ?: [];
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $line = trim($lines[$i]);
+            if ($line === '' || $line[0] !== '{') {
+                continue;
+            }
+
+            $candidate = json_decode($line, true);
+            if (is_array($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 }
