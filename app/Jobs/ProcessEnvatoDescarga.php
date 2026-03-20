@@ -124,6 +124,42 @@ class ProcessEnvatoDescarga implements ShouldQueue
             return;
         }
 
+        $processOutput = $outputFile && file_exists($outputFile)
+            ? trim(file_get_contents($outputFile))
+            : trim((string) $process->getOutput());
+
+        Log::info('ProcessEnvatoDescarga: salida recolectada', [
+            'descarga_id' => $descarga->id,
+            'output_file' => $outputFile,
+            'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
+            'output_preview' => mb_substr($processOutput ?? '', 0, 2000),
+            'exit_code' => $process->getExitCode(),
+            'successful' => $process->isSuccessful(),
+        ]);
+
+        // Regla principal: si el script reporta ok=true, se considera éxito
+        // incluso cuando cmd/bat regresa exit code distinto de 0.
+        $result = $this->decodeResultWithLogs($processOutput);
+        if (is_array($result) && ($result['ok'] ?? false)) {
+            $descarga->update([
+                'estado' => 'completado',
+                'archivo' => $result['filename'] ?? $descarga->archivo,
+                'archivo_local' => $result['filePath'] ?? null,
+                'error_detalle' => null,
+                'procesado_en' => now(),
+            ]);
+
+            Log::info('ProcessEnvatoDescarga: estado final completado', [
+                'descarga_id' => $descarga->id,
+                'filename' => $result['filename'] ?? null,
+                'file_path' => $result['filePath'] ?? null,
+                'exit_code' => $process->getExitCode(),
+                'successful' => $process->isSuccessful(),
+            ]);
+
+            return;
+        }
+
         if (! $process->isSuccessful()) {
             $errorDetail = trim($process->getErrorOutput() ?: $process->getOutput());
             $outputContent = null;
@@ -200,17 +236,6 @@ class ProcessEnvatoDescarga implements ShouldQueue
             return;
         }
 
-        $processOutput = $outputFile && file_exists($outputFile)
-            ? trim(file_get_contents($outputFile))
-            : $process->getOutput();
-
-        Log::info('ProcessEnvatoDescarga: salida recolectada', [
-            'descarga_id' => $descarga->id,
-            'output_file' => $outputFile,
-            'output_file_exists' => $outputFile ? file_exists($outputFile) : false,
-            'output_preview' => mb_substr($processOutput ?? '', 0, 2000),
-        ]);
-
         if (! $keepTempFiles) {
             if ($outputFile && file_exists($outputFile)) {
                 Log::info('ProcessEnvatoDescarga: eliminando outputFile (success)', [
@@ -237,13 +262,15 @@ class ProcessEnvatoDescarga implements ShouldQueue
             ]);
         }
 
-        $result = $this->decodeResultWithLogs($processOutput);
-
         if (is_array($result) && ($result['requiresVerification'] ?? false)) {
             $descarga->update([
                 'estado' => 'requiere_verificacion',
                 'error_detalle' => $result['message'] ?? 'Se requiere verificacion humana de Cloudflare.',
                 'procesado_en' => now(),
+            ]);
+
+            Log::warning('ProcessEnvatoDescarga: estado final requiere_verificacion', [
+                'descarga_id' => $descarga->id,
             ]);
 
             return;
@@ -254,6 +281,11 @@ class ProcessEnvatoDescarga implements ShouldQueue
                 'estado' => 'error',
                 'error_detalle' => $result['message'] ?? 'No se pudo completar la descarga.',
                 'procesado_en' => now(),
+            ]);
+
+            Log::warning('ProcessEnvatoDescarga: estado final error por respuesta ok=false', [
+                'descarga_id' => $descarga->id,
+                'message' => $result['message'] ?? null,
             ]);
 
             return;
