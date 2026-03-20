@@ -48,8 +48,13 @@ const page = await context.newPage();
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
 await page.waitForTimeout(3000);
 
+// Botón en páginas no-video (tu XPath actual / genérico)
 const xpathDownloadDirecto =
     "/html/body/div[1]/div/div/div/div/div/div[2]/div[2]/div[2]/div/div/div/div[2]/div[2]/div/div[2]/div/div/button";
+
+// Botón en páginas video (ej: muestra texto como "Descargar 4K")
+const xpathDownloadVideo =
+    "/html/body/div[1]/div/div/div[2]/div/div/div[2]/div[2]/div[2]/div/div/div/div[2]/div[2]/div/div[2]/div/div/div/div[1]/button";
 
 async function isCloudflareChallenge() {
     const title = (await page.title()).toLowerCase();
@@ -74,9 +79,22 @@ async function intentarFlujoDescargaDirecta() {
     try {
         // Envato redirige desde elements.envato.com a app.envato.com.
         await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
+
+        // Decidir si es video buscando el texto del botón (ej: "Descargar 4K")
+        const videoBtn = page.locator(`xpath=${xpathDownloadVideo}`).first();
+        let clickTargetXpath = xpathDownloadDirecto;
+
+        if ((await videoBtn.count()) > 0) {
+            const videoText = ((await videoBtn.textContent()) ?? "").toLowerCase();
+            // Si aparece "Descargar 4K" (o contiene "4k"), asumimos que es el flujo de video.
+            if (videoText.includes("4k")) {
+                clickTargetXpath = xpathDownloadVideo;
+            }
+        }
+
         const [download] = await Promise.all([
             page.waitForEvent("download", { timeout: 30000 }),
-            clickXpath(xpathDownloadDirecto, 25000),
+            clickXpath(clickTargetXpath, 25000),
         ]);
         return download;
     } catch {
