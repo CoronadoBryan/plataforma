@@ -96,7 +96,20 @@ class ProcessEnvatoDescarga implements ShouldQueue
         }
 
         try {
+            Log::info('ProcessEnvatoDescarga: ejecutando proceso', [
+                'descarga_id' => $descarga->id,
+                'timeout_seconds' => 300,
+                'output_file' => $outputFile,
+            ]);
             $process->run();
+            Log::info('ProcessEnvatoDescarga: proceso finalizado', [
+                'descarga_id' => $descarga->id,
+                'exit_code' => $process->getExitCode(),
+                'successful' => $process->isSuccessful(),
+                'output_len' => strlen($process->getOutput() ?? ''),
+                'error_len' => strlen($process->getErrorOutput() ?? ''),
+                'output_file' => $outputFile,
+            ]);
         } catch (ProcessTimedOutException $e) {
             $descarga->update([
                 'estado' => 'error',
@@ -141,6 +154,12 @@ class ProcessEnvatoDescarga implements ShouldQueue
         $processOutput = $outputFile && file_exists($outputFile)
             ? trim(file_get_contents($outputFile))
             : $process->getOutput();
+
+        Log::info('ProcessEnvatoDescarga: salida recolectada', [
+            'descarga_id' => $descarga->id,
+            'output_file' => $outputFile,
+            'output_preview' => mb_substr($processOutput ?? '', 0, 2000),
+        ]);
 
         if ($outputFile && file_exists($outputFile)) {
             @unlink($outputFile);
