@@ -118,15 +118,22 @@ function truncate(str, max) {
 }
 
 async function scanButtonsAndXPaths() {
-    if (!scanEnabled) return;
+    const shouldWriteFiles = !!scanEnabled;
+    const stamp = shouldWriteFiles ? Date.now() : null;
 
-    const stamp = Date.now();
-    const screenshotPath = path.join(debugDir, `scan-${id}-${stamp}.png`);
-    const htmlPath = path.join(debugDir, `scan-${id}-${stamp}.html`);
-    const jsonPath = path.join(debugDir, `scan-${id}-${stamp}.json`);
-    const txtPath = path.join(debugDir, `scan-${id}-${stamp}.txt`);
+    let screenshotPath = null;
+    let htmlPath = null;
+    let jsonPath = null;
+    let txtPath = null;
 
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+    if (shouldWriteFiles) {
+        screenshotPath = path.join(debugDir, `scan-${id}-${stamp}.png`);
+        htmlPath = path.join(debugDir, `scan-${id}-${stamp}.html`);
+        jsonPath = path.join(debugDir, `scan-${id}-${stamp}.json`);
+        txtPath = path.join(debugDir, `scan-${id}-${stamp}.txt`);
+
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+    }
 
     const scan = await page.evaluate((limit) => {
         function isVisible(el) {
@@ -187,30 +194,33 @@ async function scanButtonsAndXPaths() {
             visibleCount: visible.length,
             candidatesCount: candidates.length,
             visible: visible.slice(0, limit),
-            candidates: candidates.slice(0, Math.min(limit, 20)),
+            // No truncamos demasiado: para video/video-4K queremos incluirlo.
+            candidates: candidates.slice(0, Math.min(limit * 5, 100)),
         };
     }, scanLimit);
 
-    const nav = uniq(navUrls);
-    const html = truncate(await page.content(), htmlLimit);
+    if (shouldWriteFiles) {
+        const nav = uniq(navUrls);
+        const html = truncate(await page.content(), htmlLimit);
 
-    fs.writeFileSync(jsonPath, JSON.stringify({ urlInput: url, navUrls: nav, scan }, null, 2), "utf8");
-    fs.writeFileSync(htmlPath, html, "utf8");
+        fs.writeFileSync(jsonPath, JSON.stringify({ urlInput: url, navUrls: nav, scan }, null, 2), "utf8");
+        fs.writeFileSync(htmlPath, html, "utf8");
 
-    const lines = [];
-    lines.push(`url_input=${url}`);
-    lines.push(`navUrlsCount=${nav.length}`);
-    for (const u of nav) lines.push(`nav=${u}`);
-    lines.push("");
-    lines.push(`visibleCount=${scan.visibleCount}`);
-    lines.push(`candidatesCount=${scan.candidatesCount}`);
-    lines.push("");
-    lines.push("Candidates (text + xpath):");
-    for (const c of scan.candidates) {
-        lines.push(`- text="${c.text}" xpath="${c.xpath}"`);
+        const lines = [];
+        lines.push(`url_input=${url}`);
+        lines.push(`navUrlsCount=${nav.length}`);
+        for (const u of nav) lines.push(`nav=${u}`);
+        lines.push("");
+        lines.push(`visibleCount=${scan.visibleCount}`);
+        lines.push(`candidatesCount=${scan.candidatesCount}`);
+        lines.push("");
+        lines.push("Candidates (text + xpath):");
+        for (const c of scan.candidates) {
+            lines.push(`- text="${c.text}" xpath="${c.xpath}"`);
+        }
+
+        fs.writeFileSync(txtPath, lines.join("\n"), "utf8");
     }
-
-    fs.writeFileSync(txtPath, lines.join("\n"), "utf8");
     return scan.candidates;
 }
 
