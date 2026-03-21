@@ -17,6 +17,29 @@ class EnvatoElements extends Page
 
     protected string $view = 'filament.admin.pages.envato-elements';
 
+    /**
+     * Filament Shield solo descubre automáticamente Resources; esta Page no tenía
+     * autorización, por eso cualquier usuario autenticado la veía en el menú.
+     *
+     * Permiso: view_envato_elements (definido en config/filament-shield.php → custom_permissions).
+     * Asígnalo solo a los roles que deben usar Envato Elements.
+     */
+    public static function canAccess(): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->can('view_envato_elements');
+    }
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return static::canAccess();
+    }
+
     public ?string $link = null;
     public ?int $descargaId = null;
 
