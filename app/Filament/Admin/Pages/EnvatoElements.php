@@ -18,11 +18,8 @@ class EnvatoElements extends Page
     protected string $view = 'filament.admin.pages.envato-elements';
 
     /**
-     * Filament Shield solo descubre automáticamente Resources; esta Page no tenía
-     * autorización, por eso cualquier usuario autenticado la veía en el menú.
-     *
-     * Permiso: view_envato_elements (definido en config/filament-shield.php → custom_permissions).
-     * Asígnalo solo a los roles que deben usar Envato Elements.
+     * Filament Shield genera el permiso de esta página como "View:EnvatoElements"
+     * (pestaña Páginas al editar un rol). No coincide con snake_case tipo view_envato_elements.
      */
     public static function canAccess(): bool
     {
@@ -32,7 +29,8 @@ class EnvatoElements extends Page
             return false;
         }
 
-        return $user->can('view_envato_elements');
+        return $user->can('View:EnvatoElements')
+            || $user->can('view_envato_elements');
     }
 
     public static function shouldRegisterNavigation(): bool

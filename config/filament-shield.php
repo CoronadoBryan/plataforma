@@ -228,9 +228,7 @@ return [
     |
     */
 
-    'custom_permissions' => [
-        'view_envato_elements',
-    ],
+    'custom_permissions' => [],
 
     /*
     |--------------------------------------------------------------------------
