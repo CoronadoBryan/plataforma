@@ -6,7 +6,8 @@ use Filament\Widgets\Widget;
 
 class EnvatoStatusWidget extends Widget
 {
-    protected static string $view = 'filament.admin.widgets.envato-status-widget';
+    /** @var view-string */
+    protected string $view = 'filament.admin.widgets.envato-status-widget';
 
     protected static ?int $sort = 2;
 
