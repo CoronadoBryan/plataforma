@@ -108,6 +108,40 @@ async function clickXpath(xpath, timeout = 20000) {
     await locator.click({ timeout });
 }
 
+async function waitForDownloadTrigger(maxWaitMs = 90000) {
+    const start = Date.now();
+    const triggerLocators = [
+        page.locator('button:has-text("Descargar")').first(),
+        page.locator('button:has-text("Download")').first(),
+        page.locator('a:has-text("Descargar")').first(),
+        page.locator('a:has-text("Download")').first(),
+        page.getByRole("button", { name: /descargar/i }).first(),
+        page.getByRole("button", { name: /download/i }).first(),
+        page.getByRole("link", { name: /descargar/i }).first(),
+        page.getByRole("link", { name: /download/i }).first(),
+    ];
+
+    while (Date.now() - start < maxWaitMs) {
+        for (const locator of triggerLocators) {
+            try {
+                const count = await locator.count();
+                if (count === 0) {
+                    continue;
+                }
+                await locator.waitFor({ state: "visible", timeout: 2000 });
+                debug("wait.trigger.found", { waitedMs: Date.now() - start });
+                return true;
+            } catch {
+                // Continuar: algunos elementos aparecen y desaparecen durante render.
+            }
+        }
+        await page.waitForTimeout(1000);
+    }
+
+    debug("wait.trigger.timeout", { waitedMs: Date.now() - start });
+    return false;
+}
+
 async function clickLocatorAndWaitDownload(locator, label) {
     const [download] = await Promise.all([
         page.waitForEvent("download", { timeout: 30000 }),
@@ -240,6 +274,7 @@ async function intentarFlujoDescargaDirecta() {
         // Envato redirige desde elements.envato.com a app.envato.com.
         await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
         debug("flujo.directo.urlOk", { currentUrl: page.url() });
+        await waitForDownloadTrigger(90000);
 
         // Scan para guardar la estructura real (botones + xpaths + redirecciones).
         const scannedCandidates = await scanButtonsAndXPaths();
