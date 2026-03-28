@@ -108,6 +108,76 @@ async function clickXpath(xpath, timeout = 20000) {
     await locator.click({ timeout });
 }
 
+/**
+ * Cierra popups de onboarding / tips (ej. licencias) que tapan el botón Descargar.
+ * Tu XPath apuntaba al svg dentro del botón; hacemos clic en el button.
+ * El id React (_r_ke_, etc.) cambia → usamos [id^="_r_"] + misma jerarquía de divs.
+ */
+async function cerrarPopupPrevioSiExiste() {
+    const maxRounds = 4;
+    const selectorEnvatoX =
+        '[id^="_r_"] > div:nth-child(2) > div > div > div:first-child > div:nth-child(2) > button';
+
+    for (let round = 0; round < maxRounds; round++) {
+        let cerrado = false;
+
+        try {
+            const envatoBtns = page.locator(selectorEnvatoX);
+            const n = await envatoBtns.count();
+            for (let i = 0; i < n; i++) {
+                const loc = envatoBtns.nth(i);
+                const visible = await loc.isVisible({ timeout: 600 }).catch(() => false);
+                if (!visible) continue;
+                await loc.click({ timeout: 5000 });
+                debug("popup.cerrado", { round, via: "react-root-x-botón (estructura Envato)", index: i });
+                cerrado = true;
+                await page.waitForTimeout(500);
+                break;
+            }
+        } catch (e) {
+            debug("popup.cerrar.intento-fallo", { via: "react-root-x", message: e?.message ?? String(e) });
+        }
+
+        if (!cerrado) {
+            const otros = [
+                {
+                    nombre: "dialog aria Cerrar/Close",
+                    loc: page.locator('[role="dialog"] button[aria-label="Cerrar"], [role="dialog"] button[aria-label="Close"]').first(),
+                },
+                {
+                    nombre: "dialog primer botón con svg pequeño",
+                    loc: page.locator('[role="dialog"] button:has(svg)').first(),
+                },
+            ];
+            for (const { nombre, loc } of otros) {
+                try {
+                    if ((await loc.count()) === 0) continue;
+                    const visible = await loc.isVisible({ timeout: 800 }).catch(() => false);
+                    if (!visible) continue;
+                    await loc.click({ timeout: 5000 });
+                    debug("popup.cerrado", { round, via: nombre });
+                    cerrado = true;
+                    await page.waitForTimeout(500);
+                    break;
+                } catch (e) {
+                    debug("popup.cerrar.intento-fallo", { via: nombre, message: e?.message ?? String(e) });
+                }
+            }
+        }
+
+        if (!cerrado) {
+            try {
+                await page.keyboard.press("Escape");
+                await page.waitForTimeout(400);
+                debug("popup.escape", { round });
+            } catch {
+                // ignorar
+            }
+            break;
+        }
+    }
+}
+
 async function waitForDownloadTrigger(maxWaitMs = 90000) {
     const start = Date.now();
     const triggerLocators = [
@@ -274,7 +344,10 @@ async function intentarFlujoDescargaDirecta() {
         // Envato redirige desde elements.envato.com a app.envato.com.
         await page.waitForURL("**/app.envato.com/**", { timeout: 45000 });
         debug("flujo.directo.urlOk", { currentUrl: page.url() });
+        await page.waitForTimeout(800);
+        await cerrarPopupPrevioSiExiste();
         await waitForDownloadTrigger(90000);
+        await cerrarPopupPrevioSiExiste();
 
         // Scan para guardar la estructura real (botones + xpaths + redirecciones).
         const scannedCandidates = await scanButtonsAndXPaths();
